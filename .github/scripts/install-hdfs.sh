@@ -2,8 +2,8 @@
 
 set -e
 
-KERBEROS=${KERBEROS-"false"}
-AES=${AES-"false"}
+KERBEROS=${KERBEROS:-"false"}
+AES=${AES:-"false"}
 if [ "$DATA_TRANSFER_PROTECTION" = "privacy" ]; then
   KERBEROS="true"
   ENCRYPT_DATA_TRANSFER="true"
@@ -19,7 +19,7 @@ CONF_AUTHENTICATION="simple"
 KERBEROS_REALM="EXAMPLE.COM"
 KERBEROS_PRINCIPLE="administrator"
 KERBEROS_PASSWORD="password1234"
-if [ $KERBEROS = "true" ]; then
+if [ "$KERBEROS" = "true" ]; then
   CONF_AUTHENTICATION="kerberos"
 
   HOSTNAME=$(hostname)
@@ -70,9 +70,14 @@ EOF
   done
 fi
 
+# Prefer dlcdn, but fall back to the archive for versions that have rotated
+# out of the current release set.
 URL="https://dlcdn.apache.org/hadoop/core/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+if ! curl -fsIL --retry 3 "$URL" >/dev/null; then
+  URL="https://archive.apache.org/dist/hadoop/core/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+fi
 echo "Downloading $URL"
-curl -o hadoop.tar.gz $URL
+curl -fL --retry 3 -o hadoop.tar.gz "$URL"
 tar zxf hadoop.tar.gz
 
 HADOOP_ROOT="hadoop-${HADOOP_VERSION}/"

@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/user"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -189,6 +190,12 @@ func NewClient(options ClientOptions) (*Client, error) {
 		return nil, errors.New("kerberos enabled, but kerberos namenode SPN is not provided")
 	}
 
+	// On Windows, os/user.Current().Username is "DOMAIN\user", but HDFS
+	// expects the bare account name. Kerberos supplies its own username.
+	if options.KerberosClient == nil {
+		options.User = normalizeUser(options.User)
+	}
+
 	namenode, err := rpc.NewNamenodeConnection(
 		rpc.NamenodeConnectionOptions{
 			Addresses:                    options.Addresses,
@@ -204,6 +211,19 @@ func NewClient(options ClientOptions) (*Client, error) {
 	}
 
 	return &Client{namenode: namenode, options: options}, nil
+}
+
+// normalizeUser converts a local username into the form HDFS expects. On
+// Windows, os/user.Current().Username is "DOMAIN\user"; HDFS wants just the
+// account name.
+func normalizeUser(name string) string {
+	if runtime.GOOS == "windows" {
+		if i := strings.LastIndexByte(name, '\\'); i >= 0 {
+			return name[i+1:]
+		}
+	}
+
+	return name
 }
 
 // New returns Client connected to the namenode(s) specified by address, or an

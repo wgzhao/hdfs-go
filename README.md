@@ -45,24 +45,27 @@ verbs:
     The flags available are a subset of the POSIX ones, but should behave similarly.
 
     Valid commands:
-      ls [-lah] [FILE]...
+      ls [-lahR] [FILE]...
       rm [-rf] FILE...
-      mv [-fT] SOURCE... DEST
+      mv [-nT] SOURCE... DEST
       mkdir [-p] FILE...
-      touch [-amc] FILE...
+      touch [-c] FILE...
       chmod [-R] OCTAL-MODE FILE...
       chown [-R] OWNER[:GROUP] FILE...
       cat SOURCE...
       head [-n LINES | -c BYTES] SOURCE...
       tail [-n LINES | -c BYTES] SOURCE...
+      test [-defsz] FILE...
       du [-sh] FILE...
       checksum FILE...
       get SOURCE [DEST]
       getmerge SOURCE DEST
       put SOURCE DEST
+      df [-h]
+      truncate SIZE FILE
 
 Since it doesn't have to wait for the JVM to start up, it's also a lot faster
-`hadoop -fs`:
+than `hadoop fs`:
 
     $ time hadoop fs -ls / > /dev/null
 
@@ -76,13 +79,14 @@ Since it doesn't have to wait for the JVM to start up, it's also a lot faster
     user  0m0.004s
     sys 0m0.004s
 
-Best of all, it comes with bash tab completion for paths!
+Best of all, it comes with bash tab completion for paths on Unix-like systems.
 
 Installing the commandline client
 ---------------------------------
 
-Grab a tarball from the [releases page](https://github.com/colinmarc/hdfs/releases)
-and unzip it wherever you like.
+Grab the archive for your platform from the
+[releases page](https://github.com/colinmarc/hdfs/releases) (`.tar.gz` for
+Linux and macOS, `.zip` for Windows) and unzip it wherever you like.
 
 To configure the client, make sure one or both of these environment variables
 point to your Hadoop configuration (`core-site.xml` and `hdfs-site.xml`). On
@@ -90,6 +94,10 @@ systems with Hadoop installed, they should already be set.
 
     $ export HADOOP_HOME="/etc/hadoop"
     $ export HADOOP_CONF_DIR="/etc/hadoop/conf"
+
+On Windows, use `set` (or the system environment variable editor) instead:
+
+    > set HADOOP_CONF_DIR=C:\hadoop\conf
 
 To install tab completion globally on linux, copy or link the `bash_completion`
 file which comes with the tarball into the right place:
@@ -102,6 +110,46 @@ variable:
 
     $ export HADOOP_USER_NAME=username
 
+Supported platforms
+-------------------
+
+The library and command-line client are pure Go and require no cgo. Supported
+targets:
+
+| Operating system | Architectures |
+| ---------------- | ------------- |
+| Linux            | amd64, arm64  |
+| macOS            | amd64, arm64  |
+| Windows          | amd64, arm64  |
+
+Release archives are published for all of these targets (`.tar.gz` for Linux
+and macOS, `.zip` for Windows), including native Apple Silicon builds.
+
+Building from source
+--------------------
+
+Go 1.22 or newer is required.
+
+    $ git clone https://github.com/wgzhao/hdfs-go.git
+    $ cd hdfs-go
+    $ go build -o hdfs ./cmd/hdfs
+
+To produce a binary for another platform, set `GOOS` and `GOARCH`. For
+example, to build a native Apple Silicon binary:
+
+    $ GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+        go build -trimpath \
+        -ldflags "-X main.version=$(git describe --tags --always)" \
+        -o hdfs-darwin-arm64 ./cmd/hdfs
+
+And for 64-bit Windows:
+
+    $ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+        go build -o hdfs.exe ./cmd/hdfs
+
+The `Makefile` and shell scripts are Unix-oriented; on Windows, invoke
+`go build` and `go test` directly.
+
 Using the commandline client with Kerberos authentication
 ---------------------------------------------------------
 
@@ -113,6 +161,33 @@ location: `/tmp/krb5cc_<uid>`. That means it should 'just work' to use `kinit`:
 
 If that doesn't work, try setting the `KRB5CCNAME` environment variable to
 wherever you have the `ccache` saved.
+
+On Windows, the client looks for `krb5.ini` under
+`%ProgramData%\MIT\Kerberos5` or `%SystemRoot%`, and only `FILE:` ccaches
+are supported. Set `KRB5_CONFIG` and `KRB5CCNAME` explicitly if your
+Kerberos installation uses different locations, for example:
+
+    > set KRB5_CONFIG=C:\ProgramData\MIT\Kerberos5\krb5.ini
+    > set KRB5CCNAME=FILE:C:\Users\me\krb5cc
+    > hdfs ls /
+
+macOS may keep Kerberos credentials in an in-memory `API:` cache by default;
+point `KRB5CCNAME` at a `FILE:` ccache in that case.
+
+Development and testing
+-----------------------
+
+    $ make            # build the ./hdfs binary
+    $ make test       # build, run the Go tests, then the bats CLI tests
+
+The Go tests in the repository root are end-to-end tests: they require a
+reachable HDFS cluster configured via `HADOOP_CONF_DIR` (or `HADOOP_HOME`),
+plus the fixtures created by `.github/scripts/fixtures.sh`. The CI workflow in
+`.github/workflows/tests.yml` downloads and starts a local Hadoop cluster
+before running them. Tests for `hadoopconf` and the `internal/` packages run
+without a cluster:
+
+    $ go test ./hadoopconf ./internal/...
 
 Compatibility
 -------------
