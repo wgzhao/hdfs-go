@@ -5,6 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"time"
 
 	"github.com/colinmarc/hdfs/v2"
 )
@@ -58,9 +59,15 @@ func putFromStdin(client *hdfs.Client, dest string) {
 	if err != nil {
 		fatal(err)
 	}
-	defer writer.Close()
 
-	io.Copy(writer, os.Stdin)
+	if _, err := io.Copy(writer, os.Stdin); err != nil {
+		writer.Close()
+		fatal(err)
+	}
+
+	if err := closeWriter(writer); err != nil {
+		fatal(err)
+	}
 }
 
 func putFromFile(client *hdfs.Client, source string, dest string) {
@@ -100,15 +107,19 @@ func putFromFile(client *hdfs.Client, source string, dest string) {
 				return err
 			}
 
-			defer writer.Close()
 			reader, err := os.Open(p)
 			if err != nil {
+				writer.Close()
 				return err
 			}
 
 			defer reader.Close()
-			_, err = io.Copy(writer, reader)
-			if err != nil {
+			if _, err := io.Copy(writer, reader); err != nil {
+				writer.Close()
+				return err
+			}
+
+			if err := closeWriter(writer); err != nil {
 				return err
 			}
 		}
@@ -119,4 +130,21 @@ func putFromFile(client *hdfs.Client, source string, dest string) {
 	if err != nil {
 		fatal(err)
 	}
+}
+
+// closeWriter retries Close while the namenode reports that the file is still
+// being replicated. HDFS only releases the file lease once all blocks have
+// been acknowledged, which can take a moment after the data itself is written.
+func closeWriter(w *hdfs.FileWriter) error {
+	var err error
+	for i := 0; i < 300; i++ {
+		err = w.Close()
+		if !hdfs.IsErrReplicating(err) {
+			return err
+		}
+
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return err
 }
