@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/user"
+	"path/filepath"
 	"strings"
 
 	krb "github.com/jcmturner/gokrb5/v8/client"
@@ -11,13 +11,10 @@ import (
 	"github.com/jcmturner/gokrb5/v8/credentials"
 )
 
-// TODO: Write a kerberos_windows.go and move this to kerberos_unix.go. This
-// assumes MIT kerberos on unix.
-
 func getKerberosClient() (*krb.Client, error) {
-	configPath := os.Getenv("KRB5_CONFIG")
-	if configPath == "" {
-		configPath = "/etc/krb5.conf"
+	configPath, err := kerberosConfigPath()
+	if err != nil {
+		return nil, err
 	}
 
 	cfg, err := config.Load(configPath)
@@ -25,27 +22,14 @@ func getKerberosClient() (*krb.Client, error) {
 		return nil, err
 	}
 
-	// Determine the ccache location from the environment, falling back to the
-	// default location.
-	ccachePath := os.Getenv("KRB5CCNAME")
-	if strings.Contains(ccachePath, ":") {
-		if strings.HasPrefix(ccachePath, "FILE:") {
-			ccachePath = strings.SplitN(ccachePath, ":", 2)[1]
-		} else {
-			return nil, fmt.Errorf("unusable ccache: %s", ccachePath)
-		}
-	} else if ccachePath == "" {
-		u, err := user.Current()
-		if err != nil {
-			return nil, err
-		}
-
-		ccachePath = fmt.Sprintf("/tmp/krb5cc_%s", u.Uid)
+	ccachePath, err := kerberosCCachePath()
+	if err != nil {
+		return nil, err
 	}
 
 	ccache, err := credentials.LoadCCache(ccachePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't load ccache %s: %w", ccachePath, err)
 	}
 
 	client, err := krb.NewFromCCache(ccache, cfg)
@@ -54,4 +38,29 @@ func getKerberosClient() (*krb.Client, error) {
 	}
 
 	return client, nil
+}
+
+// ccachePathFromEnv parses KRB5CCNAME. Only FILE ccaches can be read by
+// gokrb5, but a bare path is accepted for convenience.
+func ccachePathFromEnv() (string, bool, error) {
+	ccachePath := os.Getenv("KRB5CCNAME")
+	if ccachePath == "" {
+		return "", false, nil
+	}
+
+	if strings.HasPrefix(ccachePath, "FILE:") {
+		return strings.TrimPrefix(ccachePath, "FILE:"), true, nil
+	}
+
+	// A bare path is usable, including drive-letter paths on Windows.
+	if filepath.IsAbs(ccachePath) {
+		return ccachePath, true, nil
+	}
+
+	// Reject non-FILE ccache types (DIR:, KEYRING:, API:, ...).
+	if strings.Contains(ccachePath, ":") {
+		return "", false, fmt.Errorf("unusable ccache: %s", ccachePath)
+	}
+
+	return ccachePath, true, nil
 }

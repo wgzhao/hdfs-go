@@ -9,18 +9,85 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            ext: ".exe"
+            archive: zip
+          - goos: windows
+            goarch: arm64
+            ext: ".exe"
+            archive: zip
     steps:
-      - uses: actions/checkout@v2
-      - uses: actions/setup-go@v2
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: 1.17
+          go-version-file: go.mod
 
-      # Touching the generated proto files ensures that make will not try to
-      # regenerate them.
-      - name: make release
-        run: find -name '*.pb.go' -exec touch {} \; && make release
+      - name: Build release archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+          TAG: ${{ github.ref_name }}
+          EXT: ${{ matrix.ext }}
+          ARCHIVE: ${{ matrix.archive }}
+        run: |
+          set -euo pipefail
+
+          name="gohdfs-${TAG}-${GOOS}-${GOARCH}"
+          mkdir -p "$name"
+          go build -trimpath -ldflags "-X main.version=${TAG}" \
+            -o "$name/hdfs${EXT}" ./cmd/hdfs
+          cp README.md LICENSE.txt "$name/"
+
+          # The bash completion script is only useful on Unix-like systems.
+          if [ "$GOOS" != "windows" ]; then
+            cp cmd/hdfs/bash_completion "$name/"
+          fi
+
+          if [ "$ARCHIVE" = "zip" ]; then
+            zip -r "$name.zip" "$name"
+          else
+            tar -czf "$name.tar.gz" "$name"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gohdfs-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            gohdfs-*.tar.gz
+            gohdfs-*.zip
+
+  release:
+    needs: build
+    # Only publish a release for tag pushes; workflow_dispatch runs still
+    # produce downloadable build artifacts.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Upload Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: gohdfs-*-linux-amd64.tar.gz
+          files: |
+            dist/gohdfs-*.tar.gz
+            dist/gohdfs-*.zip

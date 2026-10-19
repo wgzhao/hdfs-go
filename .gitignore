@@ -2,4 +2,6 @@ build
 gohdfs*
 hdfs
 !hdfs/
+hdfs-*
+hdfs.exe
 minicluster.log

@@ -47,7 +47,7 @@ func putFromStdin(client *hdfs.Client, dest string) {
 	}
 
 	mode := 0755 | os.ModeDir
-	parentDir := filepath.Dir(dest)
+	parentDir := path.Dir(dest)
 	if parentDir != "." && parentDir != "/" {
 		if err := client.MkdirAll(parentDir, mode); err != nil {
 			fatal(err)
@@ -89,7 +89,9 @@ func putFromFile(client *hdfs.Client, source string, dest string) {
 			return err
 		}
 
-		fullDest := path.Join(dest, rel)
+		// rel uses the local filesystem's separator; HDFS paths always use
+		// forward slashes.
+		fullDest := path.Join(dest, filepath.ToSlash(rel))
 		if fi.IsDir() {
 			client.Mkdir(fullDest, mode)
 		} else {
