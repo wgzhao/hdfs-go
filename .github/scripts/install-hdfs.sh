@@ -70,8 +70,12 @@ EOF
   done
 fi
 
-# dlcdn only keeps current releases, so use the archive for pinned versions.
-URL="https://archive.apache.org/dist/hadoop/core/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+# Prefer dlcdn, but fall back to the archive for versions that have rotated
+# out of the current release set.
+URL="https://dlcdn.apache.org/hadoop/core/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+if ! curl -fsIL --retry 3 "$URL" >/dev/null; then
+  URL="https://archive.apache.org/dist/hadoop/core/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz"
+fi
 echo "Downloading $URL"
 curl -fL --retry 3 -o hadoop.tar.gz "$URL"
 tar zxf hadoop.tar.gz

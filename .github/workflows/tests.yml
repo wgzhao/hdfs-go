@@ -12,21 +12,21 @@ jobs:
     strategy:
       matrix:
         include:
-          - hadoop_version: 2.10.1
-          - hadoop_version: 3.3.1
-          - hadoop_version: 3.3.1
+          - hadoop_version: 3.3.6
+          - hadoop_version: 3.4.3
+          - hadoop_version: 3.4.3
             kerberos: true
             rpc_protection: authentication
             transfer_protection: authentication
-          - hadoop_version: 3.3.1
+          - hadoop_version: 3.4.3
             kerberos: true
             rpc_protection: integrity
             transfer_protection: integrity
-          - hadoop_version: 3.3.1
+          - hadoop_version: 3.4.3
             kerberos: true
             rpc_protection: privacy
             transfer_protection: privacy
-          - hadoop_version: 3.3.1
+          - hadoop_version: 3.4.3
             kerberos: true
             rpc_protection: privacy
             transfer_protection: privacy
@@ -36,6 +36,12 @@ jobs:
     - uses: actions/setup-go@v5
       with:
         go-version-file: go.mod
+    # Hadoop 3.4 supports Java 8 and 11; pin 11 rather than relying on the
+    # runner's default JDK.
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: "11"
 
     # This step installs downloads hadoop and starts a local cluster with one
     # namenode and one datanode. It adds the hadoop binaries to GITHUB_PATH

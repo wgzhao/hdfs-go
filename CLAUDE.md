@@ -42,7 +42,7 @@ make hdfs && bats ./cmd/hdfs/test/ls.bats
 
 Cluster setup used by CI (Linux, requires sudo):
 
-- `.github/scripts/install-hdfs.sh` — downloads/starts Hadoop (matrix includes 2.10.1 and 3.3.1, with optional Kerberos, RPC protection, data-transfer protection, and AES). It writes logs to `/tmp/hdfs/{namenode,datanode}.log` and files test ccaches at `/tmp/krb5cc_gohdfs_<user>`.
+- `.github/scripts/install-hdfs.sh` — downloads/starts Hadoop (matrix includes 3.3.6 and 3.4.3, with optional Kerberos, RPC protection, data-transfer protection, and AES). It writes logs to `/tmp/hdfs/{namenode,datanode}.log` and files test ccaches at `/tmp/krb5cc_gohdfs_<user>`.
 - `.github/scripts/fixtures.sh` — populates `/_test`.
 - `.github/scripts/install-bats.sh` — installs bats.
 
