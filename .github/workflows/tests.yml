@@ -8,7 +8,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code || steps.dispatch.outputs.code }}
+    steps:
+    - uses: actions/checkout@v4
+    # Documentation, images, and other non-code files do not affect the test
+    # suite, so skip the expensive jobs for those changes.
+    - uses: dorny/paths-filter@v3
+      id: filter
+      if: github.event_name == 'pull_request'
+      with:
+        filters: |
+          code:
+            - '**/*.go'
+            - '**/*.proto'
+            - 'go.mod'
+            - 'go.sum'
+            - 'Makefile'
+            - '**/testdata/**'
+            - 'cmd/hdfs/test/**'
+            - '.github/workflows/tests.yml'
+            - '.github/scripts/**'
+    # Manual runs always exercise the full suite.
+    - id: dispatch
+      if: github.event_name == 'workflow_dispatch'
+      run: echo "code=true" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -81,6 +111,8 @@ jobs:
       run: cat /tmp/hdfs/datanode.log
 
   cross-build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -107,3 +139,32 @@ jobs:
         GOARCH: ${{ matrix.goarch }}
         CGO_ENABLED: "0"
       run: go build ./...
+
+  # A single stable check for branch protection. It succeeds when the code
+  # jobs pass, and when they are intentionally skipped for docs-only changes.
+  ci-success:
+    if: always()
+    needs: [changes, test, cross-build]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Verify results
+      env:
+        CODE: ${{ needs.changes.outputs.code }}
+        CHANGES_RESULT: ${{ needs.changes.result }}
+        TEST_RESULT: ${{ needs.test.result }}
+        CROSS_RESULT: ${{ needs.cross-build.result }}
+      run: |
+        if [ "$CHANGES_RESULT" != "success" ]; then
+          echo "changes job failed"
+          exit 1
+        fi
+
+        if [ "$CODE" != "true" ]; then
+          echo "No source changes; skipping test jobs."
+          exit 0
+        fi
+
+        if [ "$TEST_RESULT" != "success" ] || [ "$CROSS_RESULT" != "success" ]; then
+          echo "test=$TEST_RESULT cross-build=$CROSS_RESULT"
+          exit 1
+        fi
