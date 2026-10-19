@@ -1,7 +1,8 @@
 name: Tests
 
 on:
-  push:
+  # Run CI on pull requests only. PR checks already validate the code that
+  # will land on master, so a second full run after every merge is redundant.
   pull_request:
     branches: [ master ]
   workflow_dispatch:
