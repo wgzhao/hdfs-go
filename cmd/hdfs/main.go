@@ -116,7 +116,8 @@ func main() {
 	argv := os.Args[1:]
 	switch command {
 	case "-v", "--version":
-		fatal("gohdfs version", version)
+		fmt.Println("gohdfs version", version)
+		os.Exit(0)
 	case "ls":
 		lsOpts.Parse(argv)
 		ls(lsOpts.Args(), *lsl, *lsa, *lsh, *lsR)

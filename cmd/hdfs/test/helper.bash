@@ -47,6 +47,14 @@ assert_output() {
   assert_equal "$expected" "$output"
 }
 
+assert_match() {
+  if [[ ! "$2" =~ $1 ]]; then
+    { echo "expected match: $1"
+      echo "actual:         $2"
+    } | flunk
+  fi
+}
+
 assert_line() {
   if [ "$1" -ge 0 ] 2>/dev/null; then
     assert_equal "$2" "${lines[$1]}"
