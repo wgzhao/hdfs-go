@@ -29,14 +29,14 @@ func df(humanReadable bool) {
 			formatBytes(fs.Capacity),
 			formatBytes(fs.Used),
 			formatBytes(fs.Remaining),
-			100 * fs.Used / fs.Capacity)
+			100*fs.Used/fs.Capacity)
 	} else {
 		fmt.Fprintf(tw, "%v \t%v \t %v \t %v \t%d%%\n",
 			os.Getenv("HADOOP_NAMENODE"),
 			fs.Capacity,
 			fs.Used,
 			fs.Remaining,
-			100 * fs.Used / fs.Capacity)
+			100*fs.Used/fs.Capacity)
 	}
 	tw.Flush()
 }

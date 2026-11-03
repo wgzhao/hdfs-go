@@ -14,7 +14,7 @@ import (
 	"github.com/pborman/getopt"
 )
 
-// TODO: cp, tree, test, trash
+// TODO: tree, expunge/trash
 
 var (
 	version string
@@ -27,19 +27,42 @@ Valid commands:
   mv [-nT] SOURCE... DEST
   mkdir [-p] FILE...
   touch [-c] FILE...
+  touchz FILE...
   chmod [-R] OCTAL-MODE FILE...
   chown [-R] OWNER[:GROUP] FILE...
+  chgrp [-R] GROUP FILE...
   cat SOURCE...
   head [-n LINES | -c BYTES] SOURCE...
   tail [-n LINES | -c BYTES] SOURCE...
   test [-defsz] FILE...
   du [-sh] FILE...
-  checksum FILE...
-  get SOURCE [DEST]
-  getmerge SOURCE DEST
-  put SOURCE DEST
   df [-h]
+  count [-qhvue] FILE...
+  stat [FORMAT] FILE...
+  find [FILE...] [-name PATTERN] [-iname PATTERN] [-print | -print0]
+  checksum FILE...
+  text [-ignoreCrc] SOURCE...
+  get SOURCE... DEST
+  getmerge [-n] SOURCE DEST
+  copyToLocal SOURCE... DEST
+  put SOURCE... DEST
+  copyFromLocal SOURCE... DEST
+  moveFromLocal SOURCE... DEST
+  moveToLocal SOURCE DEST
+  appendToFile SOURCE... DEST
+  cp [-fpd] SOURCE... DEST
+  rmdir [--ignore-fail-on-non-empty] DIR...
   truncate SIZE FILE
+  setrep [-Rw] REPLICATION FILE...
+  createSnapshot DIR [NAME]
+  deleteSnapshot DIR NAME
+  renameSnapshot DIR OLD NEW
+  getfacl [-R] PATH...
+  setfacl [-R] {-b|-k} [-m|-x ACL] PATH...
+  setfacl [-R] --set ACL PATH...
+  getfattr [-R] {-n NAME | -d} [-e ENC] PATH...
+  setfattr {-n NAME [-v VALUE] | -x NAME} PATH...
+  usage [COMMAND...]
 `, os.Args[0])
 
 	lsOpts = getopt.New()
@@ -89,6 +112,42 @@ Valid commands:
 	dfOpts = getopt.New()
 	dfh    = dfOpts.Bool('h')
 
+	chgrpOpts = getopt.New()
+	chgrpR    = chgrpOpts.Bool('R')
+
+	countOpts = getopt.New()
+	countQ    = countOpts.Bool('q')
+	countH    = countOpts.Bool('h')
+	countV    = countOpts.Bool('v')
+	countU    = countOpts.Bool('u')
+	countE    = countOpts.Bool('e')
+
+	cpOpts = getopt.New()
+	cpf    = cpOpts.Bool('f')
+	cpp    = cpOpts.Bool('p')
+	cpd    = cpOpts.Bool('d')
+
+	getfaclOpts = getopt.New()
+	getfaclR    = getfaclOpts.Bool('R')
+
+	getfattrOpts = getopt.New()
+	getfattrR    = getfattrOpts.Bool('R')
+	getfattrN    = getfattrOpts.String('n', "")
+	getfattrD    = getfattrOpts.Bool('d')
+	getfattrE    = getfattrOpts.String('e', "text")
+
+	setfattrOpts = getopt.New()
+	setfattrN    = setfattrOpts.String('n', "")
+	setfattrV    = setfattrOpts.String('v', "")
+	setfattrX    = setfattrOpts.String('x', "")
+
+	rmdirOpts   = getopt.New()
+	rmdirIgnore = rmdirOpts.BoolLong("ignore-fail-on-non-empty", 0)
+
+	setrepOpts = getopt.New()
+	setrepR    = setrepOpts.Bool('R')
+	setrepW    = setrepOpts.Bool('w')
+
 	cachedClients map[string]*hdfs.Client = make(map[string]*hdfs.Client)
 	status                                = 0
 )
@@ -105,6 +164,14 @@ func init() {
 	getmergeOpts.SetUsage(printHelp)
 	dfOpts.SetUsage(printHelp)
 	testOpts.SetUsage(printHelp)
+	chgrpOpts.SetUsage(printHelp)
+	countOpts.SetUsage(printHelp)
+	cpOpts.SetUsage(printHelp)
+	getfaclOpts.SetUsage(printHelp)
+	getfattrOpts.SetUsage(printHelp)
+	setfattrOpts.SetUsage(printHelp)
+	rmdirOpts.SetUsage(printHelp)
+	setrepOpts.SetUsage(printHelp)
 }
 
 func main() {
@@ -139,8 +206,17 @@ func main() {
 	case "chmod":
 		chmodOpts.Parse(argv)
 		chmod(chmodOpts.Args(), *chmodR)
+	case "chgrp":
+		chgrpOpts.Parse(argv)
+		chgrp(chgrpOpts.Args(), *chgrpR)
 	case "cat":
 		cat(argv[1:])
+	case "appendToFile":
+		appendToFile(argv[1:])
+	case "copyFromLocal":
+		put(argv[1:])
+	case "copyToLocal":
+		get(argv[1:])
 	case "head", "tail":
 		headTailOpts.Parse(argv)
 		printSection(headTailOpts.Args(), *headtailn, *headtailc, (command == "tail"))
@@ -156,6 +232,49 @@ func main() {
 		getmerge(getmergeOpts.Args(), *getmergen)
 	case "put":
 		put(argv[1:])
+	case "moveFromLocal":
+		moveFromLocal(argv[1:])
+	case "moveToLocal":
+		moveToLocal(argv[1:])
+	case "cp":
+		cpOpts.Parse(argv)
+		// -d is accepted for compatibility; no ._COPYING_ file is created.
+		_ = cpd
+		cp(cpOpts.Args(), *cpf, *cpp)
+	case "rmdir":
+		rmdirOpts.Parse(argv)
+		rmdir(rmdirOpts.Args(), *rmdirIgnore)
+	case "count":
+		countOpts.Parse(argv)
+		count(countOpts.Args(), *countQ, *countH, *countV, *countU, *countE)
+	case "stat":
+		stat(argv[1:])
+	case "find":
+		find(argv[1:])
+	case "text":
+		text(stripIgnoreCrcFlag(argv[1:]))
+	case "touchz":
+		touchz(argv[1:])
+	case "setrep":
+		setrepOpts.Parse(argv)
+		setrep(setrepOpts.Args(), *setrepR, *setrepW)
+	case "createSnapshot":
+		createSnapshot(argv[1:])
+	case "deleteSnapshot":
+		deleteSnapshot(argv[1:])
+	case "renameSnapshot":
+		renameSnapshot(argv[1:])
+	case "getfacl":
+		getfaclOpts.Parse(argv)
+		getfacl(getfaclOpts.Args(), *getfaclR)
+	case "setfacl":
+		setfacl(argv[1:])
+	case "getfattr":
+		getfattrOpts.Parse(argv)
+		getfattr(getfattrOpts.Args(), *getfattrR, *getfattrN, *getfattrD, *getfattrE)
+	case "setfattr":
+		setfattrOpts.Parse(argv)
+		setfattr(setfattrOpts.Args(), *setfattrN, *setfattrV, *setfattrX)
 	case "df":
 		dfOpts.Parse(argv)
 		df(*dfh)
@@ -164,6 +283,8 @@ func main() {
 		test(testOpts.Args(), *teste, *testf, *testd, *testz, *tests)
 	case "truncate":
 		truncate(argv[1:])
+	case "usage":
+		printUsage(argv[1:])
 	// it's a seeeeecret command
 	case "complete":
 		complete(argv)
@@ -179,6 +300,38 @@ func main() {
 func printHelp() {
 	fmt.Fprintln(os.Stderr, usage)
 	os.Exit(0)
+}
+
+func printUsage(args []string) {
+	if len(args) == 0 {
+		printHelp()
+	}
+
+	lines := strings.Split(usage, "\n")
+	for _, arg := range args {
+		name := strings.TrimPrefix(arg, "-")
+		found := false
+		for _, line := range lines {
+			fields := strings.Fields(line)
+			if len(fields) > 0 && fields[0] == name {
+				fmt.Println(strings.TrimSpace(line))
+				found = true
+			}
+		}
+
+		if !found {
+			fmt.Fprintf(os.Stderr, "Unknown command: %s\n", arg)
+			status = 1
+		}
+	}
+}
+
+func stripIgnoreCrcFlag(args []string) []string {
+	for len(args) > 0 && (args[0] == "-ignoreCrc" || args[0] == "--ignoreCrc") {
+		args = args[1:]
+	}
+
+	return args
 }
 
 func fatal(msg ...interface{}) {

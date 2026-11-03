@@ -55,7 +55,7 @@ func (c *Client) CreateSnapshot(dir, name string) (string, error) {
 	return allowSnapshotRes.GetSnapshotPath(), nil
 }
 
-// CreateSnapshots deletes a snapshot with a given directory and name.
+// DeleteSnapshot deletes a snapshot with a given directory and name.
 //
 // This requires superuser privileges.
 func (c *Client) DeleteSnapshot(dir, name string) error {
@@ -69,5 +69,24 @@ func (c *Client) DeleteSnapshot(dir, name string) error {
 	if err != nil {
 		return interpretException(err)
 	}
+	return nil
+}
+
+// RenameSnapshot renames a snapshot of a given directory.
+//
+// This requires superuser privileges.
+func (c *Client) RenameSnapshot(dir, oldName, newName string) error {
+	renameSnapshotReq := &hdfs.RenameSnapshotRequestProto{
+		SnapshotRoot:    &dir,
+		SnapshotOldName: &oldName,
+		SnapshotNewName: &newName,
+	}
+	renameSnapshotRes := &hdfs.RenameSnapshotResponseProto{}
+
+	err := c.namenode.Execute("renameSnapshot", renameSnapshotReq, renameSnapshotRes)
+	if err != nil {
+		return interpretException(err)
+	}
+
 	return nil
 }

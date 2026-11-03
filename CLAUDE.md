@@ -27,6 +27,8 @@ GOOS=darwin  GOARCH=arm64 go build ./...
 
 Note that the Makefile and shell scripts are Unix-oriented. On Windows, build directly with `go build ./cmd/hdfs` rather than `make`. The release workflow produces Linux and macOS `.tar.gz` archives and Windows `.zip` archives.
 
+CI runs the Go + bats suite only on pull requests targeting `master` (and on manual dispatch); a paths filter skips the cluster jobs unless Go/proto/Makefile/testdata/CI files change. The release workflow triggers on `v*.*.*` tags and builds Linux/macOS `.tar.gz` and Windows `.zip` archives for amd64/arm64; manual dispatch builds artifacts without publishing them.
+
 Important: the root `hdfs` package tests are end-to-end tests against a live HDFS cluster, not hermetic unit tests. They load `HADOOP_CONF_DIR`/`HADOOP_HOME` via `hadoopconf.LoadFromEnvironment` and hard-fail if no namenode is configured. They also expect the fixtures created by `.github/scripts/fixtures.sh` (`/_test/foo.txt`, `/_test/mobydick.txt`) and the users `gohdfs1`/`gohdfs2`.
 
 ```bash
@@ -65,7 +67,7 @@ The code is layered; operations generally flow top → bottom:
 
 1. **Public API (`package hdfs`, repository root).** `Client` (`client.go`) wraps one `rpc.NamenodeConnection`, carries `ClientOptions`, and caches server defaults and the data encryption key. It deliberately mirrors `os`: `Open`, `Create`, `Append`, `Stat`, `ReadDir`, `Mkdir`/`MkdirAll`, `Remove`/`RemoveAll`, `Rename`, `Walk`, `Chmod`, `Chown`, etc. `FileReader` implements `io.Reader`, `io.ReaderAt`, `io.Seeker`, `io.Closer`, and `Readdir*`; `FileWriter` implements buffered block writes (calling `Close` is mandatory); `FileInfo` implements `os.FileInfo`. There are HDFS-specific extras too: xattrs (`xattr.go`), snapshots (`snapshot.go`), `Truncate`, `StatFs`, `GetContentSummary`, and `Checksum`. Every operation builds a protobuf request and calls `c.namenode.Execute("<rpcMethod>", req, resp)`.
 
-2. **`hadoopconf`** parses `core-site.xml`, `hdfs-site.xml`, and `mapred-site.xml` from `HADOOP_CONF_DIR`, else `$HADOOP_HOME/conf`. `ClientOptionsFromConf` translates those properties into `ClientOptions`: namenode addresses, datanode hostname usage, Kerberos settings, and data-transfer protection.
+2. **`hadoopconf`** parses `core-site.xml`, `hdfs-site.xml`, and `mapred-site.xml` from `HADOOP_CONF_DIR`, else `$HADOOP_HOME/conf`. The root package's `ClientOptionsFromConf` (`client.go`) translates those properties into `ClientOptions`: namenode addresses, datanode hostname usage, Kerberos settings, and data-transfer protection. When Kerberos is required it sets a non-nil but empty `KerberosClient`, forcing callers to replace it with a credentialed client; `New` does not perform Kerberos authentication, so use `NewClient` for that.
 
 3. **`internal/rpc`** implements namenode RPC. Wire format: a 4-byte big-endian length followed by varint-prefixed `RpcRequestHeaderProto`, `RequestHeaderProto`, and the request message; the connection starts with the `hrpc` handshake and optional Kerberos SASL negotiation. `NamenodeConnection.Execute` serializes calls with a mutex, fails over across configured namenode addresses (backing off failed ones for 5s), retries only on `StandbyException`, and runs a background goroutine renewing file leases every second. `basicTransport` handles plain RPC; `saslTransport` handles `integrity`/`privacy` wrapping.
 
@@ -75,7 +77,7 @@ The code is layered; operations generally flow top → bottom:
 
 6. **`internal/protocol/*`** contains the vendored HDFS `.proto` files and generated Go code; the generated types are used directly throughout the layers above.
 
-7. **`cmd/hdfs`** is the CLI. One file per command; flags use `pborman/getopt`; clients are cached per namenode. `paths.go` handles `hdfs://host:port/path` URLs, maps relative paths to `/user/<user>`, and expands globs. `bash_completion` and the hidden `complete` command provide shell completion.
+7. **`cmd/hdfs`** is the CLI. One file per command; flags use `pborman/getopt`; clients are cached per namenode. `paths.go` handles `hdfs://host:port/path` URLs, maps relative paths to `/user/<user>`, and expands globs. `bash_completion` and the hidden `complete` command provide shell completion. Kerberos uses `KRB5_CONFIG` and a FILE `KRB5CCNAME` ccache, resolved by platform-specific `kerberos_unix.go`/`kerberos_windows.go`; non-Kerberos users come from `HADOOP_USER_NAME` or the system user.
 
 ### Error handling contract
 
@@ -85,7 +87,7 @@ Remote Java exceptions arrive as `*rpc.NamenodeError` (implementing the public `
 
 ## Testing conventions
 
-- Root-package tests are integration/E2E tests against a real cluster; new filesystem behavior should be tested there (following the existing `getClient`/fixture helpers in `client_test.go`), not with mocks.
+- Root-package tests are integration/E2E tests against a real cluster; new filesystem behavior should be tested there (following the existing `getClient`/`getClientForUser`/`getClientForSuperUser` helpers in `client_test.go`, which cache clients per username for the test process), not with mocks. `getClient` acts as `gohdfs1`; permission tests open a second client as `gohdfs2`.
 - Kerberos tests skip themselves when `/etc/krb5.conf` or the per-user ccache is unavailable.
 - CLI tests are bats scripts in `cmd/hdfs/test/`; `helper.bash` defines the assertion helpers and points at the locally built `./hdfs`. Several compare behavior against `hadoop fs` via `HADOOP_FS`.
 - Cluster-independent tests live in `hadoopconf/` and `internal/{rpc,sasl,transfer}`.

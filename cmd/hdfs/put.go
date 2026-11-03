@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path"
@@ -11,29 +12,38 @@ import (
 )
 
 func put(args []string) {
-	if len(args) != 2 {
+	if len(args) < 2 {
 		fatalWithUsage()
 	}
 
-	dests, nn, err := normalizePaths(args[1:])
+	dests, nn, err := normalizePaths(args[len(args)-1:])
 	if err != nil {
 		fatal(err)
 	}
 
 	dest := dests[0]
-	source, err := filepath.Abs(args[0])
-	if err != nil {
-		fatal(err)
-	}
-
 	client, err := getClient(nn)
 	if err != nil {
 		fatal(err)
 	}
 
-	if filepath.Base(source) == "-" {
-		putFromStdin(client, dest)
-	} else {
+	destInfo, statErr := client.Stat(dest)
+	destIsDir := statErr == nil && destInfo.IsDir()
+	if len(args) > 2 && !destIsDir {
+		fatal(&os.PathError{"put", dest, errors.New("destination must be a directory")})
+	}
+
+	for _, arg := range args[:len(args)-1] {
+		if arg == "-" {
+			putFromStdin(client, dest)
+			continue
+		}
+
+		source, err := filepath.Abs(arg)
+		if err != nil {
+			fatal(err)
+		}
+
 		putFromFile(client, source, dest)
 	}
 }
