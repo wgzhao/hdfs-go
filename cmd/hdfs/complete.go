@@ -14,17 +14,41 @@ var knownCommands = []string{
 	"mv",
 	"mkdir",
 	"touch",
+	"touchz",
 	"chmod",
 	"chown",
+	"chgrp",
 	"cat",
 	"head",
 	"tail",
 	"du",
+	"df",
+	"count",
+	"stat",
+	"find",
 	"checksum",
+	"text",
 	"get",
 	"getmerge",
+	"copyToLocal",
 	"put",
-	"df",
+	"copyFromLocal",
+	"moveFromLocal",
+	"moveToLocal",
+	"appendToFile",
+	"cp",
+	"rmdir",
+	"truncate",
+	"setrep",
+	"createSnapshot",
+	"deleteSnapshot",
+	"renameSnapshot",
+	"getfacl",
+	"setfacl",
+	"getfattr",
+	"setfattr",
+	"test",
+	"usage",
 }
 
 func complete(args []string) {
@@ -43,11 +67,14 @@ func complete(args []string) {
 }
 
 func completeArg(command, fragment string, position int) {
-	if (command == "put" && position == 1) ||
-		((command == "get" || command == "getmerge") && position == 2) {
+	if (command == "put" || command == "copyFromLocal" || command == "moveFromLocal") && position == 1 {
 		fmt.Println("_FILE_") // The bash_completion bit knows about this special string.
-	} else if (command == "chmod" || command == "chown") && position == 1 {
+	} else if (command == "get" || command == "getmerge" || command == "copyToLocal" || command == "moveToLocal") && position == 2 {
+		fmt.Println("_FILE_")
+	} else if (command == "chmod" || command == "chown" || command == "chgrp") && position == 1 {
 		return
+	} else if command == "usage" {
+		fmt.Println(strings.Join(knownCommands, " "))
 	} else if !strings.HasPrefix(fragment, "-") {
 		completePath(fragment)
 	}

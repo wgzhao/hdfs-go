@@ -67,9 +67,22 @@ func (fi *FileInfo) Size() int64 {
 }
 
 func (fi *FileInfo) Mode() os.FileMode {
-	mode := os.FileMode(fi.status.GetPermission().GetPerm())
+	perm := fi.status.GetPermission().GetPerm()
+	mode := os.FileMode(perm & 0777)
+	if perm&04000 != 0 {
+		mode |= os.ModeSetuid
+	}
+	if perm&02000 != 0 {
+		mode |= os.ModeSetgid
+	}
+	if perm&01000 != 0 {
+		mode |= os.ModeSticky
+	}
 	if fi.IsDir() {
 		mode |= os.ModeDir
+	}
+	if fi.IsSymlink() {
+		mode |= os.ModeSymlink
 	}
 
 	return mode
@@ -105,4 +118,26 @@ func (fi *FileInfo) OwnerGroup() string {
 // os.FileInfo interface.
 func (fi *FileInfo) AccessTime() time.Time {
 	return time.Unix(int64(fi.status.GetAccessTime())/1000, 0)
+}
+
+// Replication returns the configured block replication factor for a file.
+// It returns 0 for directories.
+func (fi *FileInfo) Replication() int {
+	return int(fi.status.GetBlockReplication())
+}
+
+// BlockSize returns the configured block size for a file, in bytes. It
+// returns 0 for directories.
+func (fi *FileInfo) BlockSize() int64 {
+	return int64(fi.status.GetBlocksize())
+}
+
+// IsSymlink returns true if the file is a symlink.
+func (fi *FileInfo) IsSymlink() bool {
+	return fi.status.GetFileType() == hdfs.HdfsFileStatusProto_IS_SYMLINK
+}
+
+// HasAcl returns true if the file or directory has extended ACL entries.
+func (fi *FileInfo) HasAcl() bool {
+	return fi.status.GetFlags()&uint32(hdfs.HdfsFileStatusProto_HAS_ACL) != 0
 }

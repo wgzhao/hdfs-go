@@ -30,10 +30,12 @@ func (c *Client) Chmod(name string, perm os.FileMode) error {
 // If an empty string is passed for user or group, that field will not be
 // changed remotely.
 func (c *Client) Chown(name string, user, group string) error {
-	req := &hdfs.SetOwnerRequestProto{
-		Src:       proto.String(name),
-		Username:  proto.String(user),
-		Groupname: proto.String(group),
+	req := &hdfs.SetOwnerRequestProto{Src: proto.String(name)}
+	if user != "" {
+		req.Username = proto.String(user)
+	}
+	if group != "" {
+		req.Groupname = proto.String(group)
 	}
 	resp := &hdfs.SetOwnerResponseProto{}
 

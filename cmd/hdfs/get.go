@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path"
@@ -10,27 +11,28 @@ import (
 )
 
 func get(args []string) {
-	if len(args) == 0 || len(args) > 2 {
+	if len(args) == 0 {
 		fatalWithUsage()
 	}
 
-	sources, nn, err := normalizePaths(args[0:1])
-	if err != nil {
-		fatal(err)
-	}
-
-	source := sources[0]
+	var sources []string
 	var dest string
-	if len(args) == 2 {
-		dest = args[1]
-	} else {
+	if len(args) == 1 {
 		cwd, err := os.Getwd()
 		if err != nil {
 			fatal(err)
 		}
 
-		_, name := path.Split(source)
-		dest = filepath.Join(cwd, name)
+		sources = args
+		dest = cwd
+	} else {
+		sources = args[:len(args)-1]
+		dest = args[len(args)-1]
+	}
+
+	normalized, nn, err := normalizePaths(sources)
+	if err != nil {
+		fatal(err)
 	}
 
 	client, err := getClient(nn)
@@ -38,31 +40,45 @@ func get(args []string) {
 		fatal(err)
 	}
 
-	err = client.Walk(source, func(p string, fi os.FileInfo, err error) error {
-		fullDest := filepath.Join(dest, strings.TrimPrefix(p, source))
+	destInfo, destErr := os.Stat(dest)
+	destIsDir := destErr == nil && destInfo.IsDir()
+	if len(normalized) > 1 && !destIsDir {
+		fatal(&os.PathError{"get", dest, errors.New("destination must be a directory")})
+	}
+
+	for _, source := range normalized {
+		target := dest
+		if destIsDir {
+			target = filepath.Join(dest, path.Base(source))
+		}
+
+		err = client.Walk(source, func(p string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			relative := strings.TrimPrefix(p, source)
+			relative = strings.TrimPrefix(relative, "/")
+			fullDest := filepath.Join(target, relative)
+
+			if fi.IsDir() {
+				if info, err := os.Stat(fullDest); err == nil {
+					if info.IsDir() {
+						return nil
+					}
+
+					return &os.PathError{"mkdir", fullDest, os.ErrExist}
+				}
+
+				return os.Mkdir(fullDest, 0755)
+			}
+
+			return client.CopyToLocal(p, fullDest)
+		})
 
 		if err != nil {
 			fatal(err)
 		}
-
-		if fi.IsDir() {
-			err = os.Mkdir(fullDest, 0755)
-			if err != nil {
-				fatal(err)
-			}
-		} else {
-			err = client.CopyToLocal(p, fullDest)
-			if pathErr, ok := err.(*os.PathError); ok {
-				fatal(pathErr)
-			} else if err != nil {
-				fatal(err)
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		fatal(err)
 	}
 }
 
