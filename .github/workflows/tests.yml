@@ -30,6 +30,7 @@ jobs:
             - '**/testdata/**'
             - 'cmd/hdfs/test/**'
             - '.github/workflows/tests.yml'
+            - '.github/workflows/release.yml'
             - '.github/scripts/**'
     # Manual runs always exercise the full suite.
     - id: dispatch
@@ -117,6 +118,8 @@ jobs:
     strategy:
       matrix:
         include:
+          - goos: linux
+            goarch: arm64
           - goos: darwin
             goarch: amd64
           - goos: darwin

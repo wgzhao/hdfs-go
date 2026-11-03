@@ -18,7 +18,7 @@ make test            # build CLI, run `go test -v -race -timeout 30s ./...`, the
 make release         # package gohdfs-<tag>-<os>-<arch>.tar.gz for the host platform
 ```
 
-The library and CLI are pure Go and cross-compile without cgo; CI verifies `darwin/amd64`, `darwin/arm64`, `windows/amd64`, and `windows/arm64`:
+The library and CLI are pure Go and cross-compile without cgo; CI verifies `linux/arm64`, `darwin/amd64`, `darwin/arm64`, `windows/amd64`, and `windows/arm64`:
 
 ```bash
 GOOS=windows GOARCH=amd64 go build ./...
