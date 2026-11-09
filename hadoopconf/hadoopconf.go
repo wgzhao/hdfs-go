@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -24,34 +25,57 @@ type propertyList struct {
 
 var confFiles = []string{"core-site.xml", "hdfs-site.xml", "mapred-site.xml"}
 
+// defaultConfDir is where the Hadoop packages shipped by most Linux
+// distributions (and by Cloudera and Ambari) install their configuration.
+const defaultConfDir = "/etc/hadoop/conf"
+
 // HadoopConf represents a map of all the key value configutation
 // pairs found in a user's hadoop configuration files.
 type HadoopConf map[string]string
 
 // LoadFromEnvironment tries to locate the Hadoop configuration files based on
 // the environment, and returns a HadoopConf object representing the parsed
-// configuration. If the HADOOP_CONF_DIR environment variable is specified, it
-// uses that, or if HADOOP_HOME is specified, it uses $HADOOP_HOME/conf.
+// configuration.
+//
+// Directories are searched in this order:
+//
+//   - $HADOOP_CONF_DIR
+//   - $HADOOP_HOME/etc/hadoop (the layout used by Hadoop 2.x and later)
+//   - $HADOOP_HOME/conf (the older Hadoop 1.x and CDH 5 layout)
+//   - /etc/hadoop/conf (the location used by most Linux packages), on
+//     non-Windows systems
 //
 // If no configuration can be found, it returns a nil map. If the configuration
 // files exist but there was an error opening or parsing them, that is returned
 // as well.
 func LoadFromEnvironment() (HadoopConf, error) {
-	hadoopConfDir := os.Getenv("HADOOP_CONF_DIR")
-	if hadoopConfDir != "" {
-		if conf, err := Load(hadoopConfDir); conf != nil || err != nil {
-			return conf, err
-		}
-	}
-
-	hadoopHome := os.Getenv("HADOOP_HOME")
-	if hadoopHome != "" {
-		if conf, err := Load(filepath.Join(hadoopHome, "conf")); conf != nil || err != nil {
+	for _, dir := range confDirs() {
+		if conf, err := Load(dir); conf != nil || err != nil {
 			return conf, err
 		}
 	}
 
 	return nil, nil
+}
+
+// confDirs returns the candidate configuration directories, in priority order.
+func confDirs() []string {
+	var dirs []string
+
+	if dir := os.Getenv("HADOOP_CONF_DIR"); dir != "" {
+		dirs = append(dirs, dir)
+	}
+
+	if home := os.Getenv("HADOOP_HOME"); home != "" {
+		dirs = append(dirs, filepath.Join(home, "etc", "hadoop"))
+		dirs = append(dirs, filepath.Join(home, "conf"))
+	}
+
+	if runtime.GOOS != "windows" {
+		dirs = append(dirs, defaultConfDir)
+	}
+
+	return dirs
 }
 
 // Load returns a HadoopConf object representing configuration from the
