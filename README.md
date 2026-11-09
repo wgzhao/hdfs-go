@@ -111,12 +111,19 @@ Grab the archive for your platform from the
 [releases page](https://github.com/colinmarc/hdfs/releases) (`.tar.gz` for
 Linux and macOS, `.zip` for Windows) and unzip it wherever you like.
 
-To configure the client, make sure one or both of these environment variables
-point to your Hadoop configuration (`core-site.xml` and `hdfs-site.xml`). On
-systems with Hadoop installed, they should already be set.
+To configure the client, it looks for your Hadoop configuration
+(`core-site.xml`, `hdfs-site.xml`, and `mapred-site.xml`) in these locations,
+in order:
 
-    $ export HADOOP_HOME="/etc/hadoop"
-    $ export HADOOP_CONF_DIR="/etc/hadoop/conf"
+1. `HADOOP_CONF_DIR`
+2. `$HADOOP_HOME/etc/hadoop`
+3. `$HADOOP_HOME/conf`
+4. `/etc/hadoop/conf` (on Linux and other non-Windows systems)
+
+You only need to set an environment variable if your configuration lives
+somewhere else:
+
+    $ export HADOOP_CONF_DIR="/path/to/hadoop/conf"
 
 On Windows, use `set` (or the system environment variable editor) instead:
 
